@@ -1,0 +1,268 @@
+menu "Roller shutter"
+
+    menu "Keypad outputs"
+
+        choice SHUTTER_OUTPUT_DRIVE
+            prompt "Output stage"
+            default SHUTTER_OUTPUT_OPEN_DRAIN
+            help
+                OPEN_DRAIN: GPIO directly (via ~1 kOhm) on the key line of the
+                            membrane keypad. "Key pressed" = GPIO pulls to GND,
+                            otherwise high impedance. Only allowed if the key line
+                            switches to GND and carries at most 3.3 V at rest
+                            (see README, measure first!).
+                PUSH_PULL:  GPIO active high, e.g. for an optocoupler (PC817) or a
+                            transistor in parallel to the key.
+
+            config SHUTTER_OUTPUT_OPEN_DRAIN
+                bool "Open drain, active low (direct connection)"
+
+            config SHUTTER_OUTPUT_PUSH_PULL
+                bool "Push-pull, active high (optocoupler/transistor)"
+        endchoice
+
+        choice SHUTTER_OUTPUT_MODE
+            prompt "Drive mode"
+            default SHUTTER_OUTPUT_MODE_PULSE
+            help
+                PULSE: Short key presses are simulated. The drive then runs to the
+                       end position on its own (membrane keypad).
+                HOLD:  The output stays active as long as the motor should run
+                       (e.g. a relay directly on the motor or "hold key" drives).
+
+            config SHUTTER_OUTPUT_MODE_PULSE
+                bool "PULSE - short key press"
+
+            config SHUTTER_OUTPUT_MODE_HOLD
+                bool "HOLD - output active while moving"
+        endchoice
+
+        config SHUTTER_GPIO_UP
+            int "GPIO of the UP key (bottom keypad pin)"
+            range 0 27
+            default 10
+            help
+                Do not use on the ESP32-H2: strapping pins (GPIO8, 9, 25), USB (GPIO26, 27),
+                32 kHz crystal (GPIO13, 14). Both boards in hardware/: UP = IO10, DOWN = IO11.
+
+        config SHUTTER_GPIO_DOWN
+            int "GPIO of the DOWN key (middle keypad pin)"
+            range 0 27
+            default 11
+
+        choice SHUTTER_STOP_METHOD
+            prompt "How is a running motor stopped?"
+            default SHUTTER_STOP_OPPOSITE_KEY
+            help
+                Depends on the original controller. Heim & Haus solar: opposite key
+                (determined on the drive).
+
+            config SHUTTER_STOP_SAME_KEY
+                bool "Press the direction key again"
+
+            config SHUTTER_STOP_OPPOSITE_KEY
+                bool "Press the opposite key"
+
+            config SHUTTER_STOP_DEDICATED_KEY
+                bool "Dedicated STOP key"
+
+            config SHUTTER_STOP_NONE
+                bool "Not at all (the drive always runs to the end position)"
+                help
+                    Stop commands are ignored, intermediate positions are rounded
+                    to the nearest end position.
+        endchoice
+
+        config SHUTTER_GPIO_STOP
+            int "GPIO of the STOP key"
+            depends on SHUTTER_STOP_DEDICATED_KEY
+            range 0 27
+            default 12
+
+        config SHUTTER_PULSE_MS
+            int "Duration of a key press (ms)"
+            depends on SHUTTER_OUTPUT_MODE_PULSE
+            range 50 2000
+            default 300
+
+        config SHUTTER_SENSE_MANUAL_PRESS
+            bool "Detect manual key presses on the membrane keypad"
+            depends on SHUTTER_OUTPUT_OPEN_DRAIN
+            default y
+            help
+                The key lines are also read as inputs. If someone presses a key
+                directly on the drive, the calculated position is still tracked
+                and reported to Home Assistant.
+
+        config SHUTTER_SWAP_DIRECTION
+            bool "Swap UP and DOWN"
+            default n
+
+    endmenu
+
+    menu "Travel times"
+
+        config SHUTTER_TRAVEL_TIME_UP_MS
+            int "Travel time fully closed -> fully open (ms)"
+            range 1000 300000
+            default 16000
+            help
+                Measured on the Heim & Haus solar drive: 16.0 s. With battery sensing
+                the end position is also detected from the motor current.
+
+        config SHUTTER_TRAVEL_TIME_DOWN_MS
+            int "Travel time fully open -> fully closed (ms)"
+            range 1000 300000
+            default 14200
+            help
+                Measured on the Heim & Haus solar drive: 14.2 s.
+
+        config SHUTTER_END_OVERRUN_MS
+            int "Safety margin at the end positions (ms)"
+            range 0 30000
+            default 2000
+            help
+                When moving to an end position, this time is waited in addition
+                before "stopped" is reported. In PULSE mode the drive stops at the
+                end position by itself; in HOLD mode the output stays active that long.
+
+        config SHUTTER_REVERSE_DELAY_MS
+            int "Pause when reversing (ms)"
+            range 100 5000
+            default 800
+
+        config SHUTTER_REPORT_INTERVAL_MS
+            int "Position report interval while moving (ms)"
+            range 200 10000
+            default 2000
+
+    endmenu
+
+    menu "Voltage sensing"
+
+        comment "Dedicated dividers to GND on ADC pins, -1 = not fitted"
+
+        config SHUTTER_BATTERY_ADC_GPIO
+            int "GPIO of the battery+ divider"
+            range -1 27
+            default 4
+            help
+                Both boards: IO4. ESP32-H2: ADC on GPIO1..5.
+
+        config SHUTTER_MOTOR_P_ADC_GPIO
+            int "GPIO of the motor terminal M+ divider"
+            range -1 27
+            default 5
+            help
+                Both boards: IO5.
+
+        config SHUTTER_MOTOR_N_ADC_GPIO
+            int "GPIO of the motor terminal M- divider"
+            range -1 27
+            default 1
+            help
+                Both boards: IO1.
+
+        config SHUTTER_SOLAR_ADC_GPIO
+            int "GPIO of the solar panel divider"
+            range -1 27
+            default 2
+            help
+                Both boards: IO2. The voltage is reported to Home Assistant.
+
+        config SHUTTER_SENSE_R_TOP_OHM
+            int "Divider top, input -> ADC (Ohm)"
+            range 1000 10000000
+            default 1000000
+            help
+                Applies to all channels. Permanent installation: 1 MOhm / 220 kOhm
+                (about 10 uA from the battery) with 100 nF ceramic on the ADC pin,
+                no electrolytic capacitor (leakage).
+
+        config SHUTTER_SENSE_R_BOTTOM_OHM
+            int "Divider bottom, ADC -> GND (Ohm)"
+            range 1000 10000000
+            default 220000
+            help
+                12.6 V at the input must stay below about 2.5 V at the ADC.
+
+        config SHUTTER_BATTERY_SENSE
+            bool "Detect the motor current from the battery voltage"
+            default y
+            help
+                While the motor runs, the battery voltage sags (measured: 70..90 mV
+                down, 140..200 mV up). After each key press this checks whether the
+                motor really starts, and the end position is detected when the motor
+                switches off. The controller keeps the motor powered for about 30 s
+                after the end position and treats a key press during that time as
+                stop. Without a divider (reading below the minimum voltage) the
+                firmware works on time only.
+
+        config SHUTTER_MOTOR_STEP_MV
+            int "Motor current step threshold (mV)"
+            depends on SHUTTER_BATTERY_SENSE
+            range 10 2000
+            default 50
+            help
+                The battery voltage has to drop this much when the motor starts and
+                rise this much when it stops. Measured noise: about +-10 mV.
+
+        config SHUTTER_MOTOR_START_TIMEOUT_MS
+            int "Time to wait for the motor to start after a key press (ms)"
+            depends on SHUTTER_BATTERY_SENSE
+            range 300 5000
+            default 1500
+
+        config SHUTTER_MOTOR_START_RETRIES
+            int "Retries if the motor does not start"
+            depends on SHUTTER_BATTERY_SENSE
+            range 0 5
+            default 2
+            help
+                A press during the controller's run-on acts as stop; only the next
+                one starts the motor.
+
+        config SHUTTER_BATTERY_MIN_MV
+            int "Minimum voltage; below it the divider counts as not connected (mV)"
+            range 0 20000
+            default 6000
+
+        config SHUTTER_MOTOR_VOLTAGE_MIN_MV
+            int "Motor terminals: the motor counts as powered from this voltage (mV)"
+            range 500 20000
+            default 6000
+            help
+                At rest both motor terminals are without voltage; when powered, one
+                of them is at battery voltage. This shows the firmware directly
+                whether the controller took a key press as start or as stop.
+                Only effective if both motor channels are configured.
+
+        config SHUTTER_BATTERY_EMPTY_MV
+            int "Battery empty at (mV), for the charge level"
+            range 0 20000
+            default 9600
+            help
+                3S Li-ion: 3.2 V per cell. The level in between is calculated
+                linearly, so it is only a rough indication.
+
+        config SHUTTER_BATTERY_FULL_MV
+            int "Battery full at (mV), for the charge level"
+            range 0 20000
+            default 12600
+
+        config SHUTTER_MONITOR_INTERVAL_S
+            int "Measure battery and solar at rest every ... seconds"
+            range 60 86400
+            default 900
+
+    endmenu
+
+    config SHUTTER_GPIO_RESET_BUTTON
+        int "GPIO of the reset button (BOOT), -1 = disabled"
+        range -1 27
+        default 9
+        help
+            Hold for 5 seconds: Zigbee factory reset (the device leaves the network
+            and then searches for a new one). This is the BOOT button on GPIO9.
+
+endmenu

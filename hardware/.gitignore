@@ -1,0 +1,5 @@
+# KiCad: local view settings, backups, caches
+*.kicad_prl
+*-backups/
+fp-info-cache
+_autosave-*

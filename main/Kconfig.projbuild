@@ -1,0 +1,46 @@
+menu "Roller shutter Zigbee"
+
+    config SHUTTER_ZB_CHANNEL_MASK
+        hex "Zigbee channel mask"
+        default 0x07FFF800
+        help
+            Channels scanned for a Zigbee network.
+            0x07FFF800 = all channels 11..26.
+
+    config SHUTTER_ZB_POLL_INTERVAL_MS
+        int "Poll interval as end device (ms)"
+        depends on ZB_ZED
+        range 250 30000
+        default 1000
+        help
+            How often the sleeping device asks its parent for new commands.
+            Smaller = faster response to Home Assistant, but higher current
+            drawn from the battery.
+
+    menu "OTA update"
+
+        config SHUTTER_OTA_MANUF_CODE
+            hex "Manufacturer code in the OTA image"
+            default 0x131B
+            help
+                0x131B = Espressif. Together with the image type, ZHA uses it to
+                match an OTA file to the device.
+
+        config SHUTTER_OTA_IMAGE_TYPE
+            hex "Image type in the OTA image"
+            default 0x5201
+            help
+                Own value for this device so ZHA never offers the file to another
+                Espressif device.
+
+        config SHUTTER_OTA_QUERY_INTERVAL_H
+            int "Ask for updates every ... hours (0 = only at start-up)"
+            range 0 168
+            default 24
+            help
+                A sleeping device easily misses the notification from ZHA, so it
+                asks by itself.
+
+    endmenu
+
+endmenu

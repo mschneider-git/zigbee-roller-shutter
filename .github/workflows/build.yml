@@ -1,0 +1,38 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: ESP-IDF build
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.1
+          target: esp32h2
+          command: idf.py build
+
+      - name: Merge binary
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.1
+          target: esp32h2
+          command: cd build && esptool --chip esp32h2 merge-bin -o zigbee_roller_shutter_merged.bin @flash_args
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware
+          path: |
+            build/zigbee_roller_shutter.bin
+            build/zigbee_roller_shutter_merged.bin
+            build/*-ota-file.zigbee
+            build/ota_data_initial.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+            build/flash_args

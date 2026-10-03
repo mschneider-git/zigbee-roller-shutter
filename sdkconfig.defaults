@@ -1,0 +1,37 @@
+CONFIG_IDF_TARGET="esp32h2"
+
+# Waveshare ESP32-H2-Zero: 4 MB flash
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Partition table: ota_0 + ota_1 for Zigbee OTA
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Boot a new OTA image only on trial; it becomes valid once the device has
+# rejoined the Zigbee network, otherwise the next reset rolls back
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Zigbee: sleepy end device (battery powered)
+CONFIG_ZB_ENABLED=y
+CONFIG_ZB_ZED=y
+CONFIG_ZB_RADIO_NATIVE=y
+
+# Light sleep between Zigbee polls
+CONFIG_PM_ENABLE=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+CONFIG_IEEE802154_SLEEP_ENABLE=y
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_SLEEP_POWER_DOWN_FLASH=y
+# Also power down the peripherals in light sleep (85 -> 25 uA per datasheet).
+# Keys then wake the chip via EXT1 (inputs.c); the ADC is set up again after sleep (sense.c).
+CONFIG_PM_POWER_DOWN_PERIPHERAL_IN_LIGHT_SLEEP=y
+
+# 32 kHz crystal (Y1 on both boards): more accurate sleep clock, shorter wake-up
+# margin before each poll. Without the crystal ESP-IDF falls back to the internal RC oscillator.
+CONFIG_RTC_CLK_SRC_EXT_CRYS=y
+
+# Console on the USB-C connector (USB Serial/JTAG)
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Lean logs in battery operation (set to INFO for bench tests)
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
