@@ -21,7 +21,7 @@ a simplified model of the terminal from the same script.
 | J3 | 1×3 socket, **bottom side**, onto the original keypad header (GND · DOWN · UP) | bottom right |
 | J4 | 1×3 header, 90°, membrane keypad, pins towards the board centre, GND on top | bottom right |
 | J1 | WAGO 2060-452, **battery+ looped through**: cut the red battery wire and put both ends into the two spring terminals | right arm, wire entry at the top |
-| J5 | 1×3 header, 90°, measurement inputs **SOL · M+ · M−** (labels on the bottom side) | left arm, pins pointing up |
+| J5 | 1×3 header, 90°, measurement inputs **SOL · M+ · M−** (labels on the bottom side), **optional**, see below | left arm, pins pointing up |
 
 USB-C, BOOT and RESET are on the H2-Zero itself.
 
@@ -116,3 +116,6 @@ intended (header pins protrude over the edge).
    **USB-C towards the "USB" label**. Cut the pins flush on the bottom side.
 4. Cut the red battery wire, put both ends into J1, plug the board onto the keypad header and the
    keypad into J4.
+5. Optional: connect J5 to the controller's terminal block, SOL to solar + (yellow), M+ and M− to
+   the motor terminals (blue, brown). Without these wires the firmware works with the battery
+   voltage alone (see the main README).

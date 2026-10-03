@@ -14,7 +14,8 @@
  * If both motor terminals are connected as well, their voltage shows directly
  * whether the controller switched the motor on: a key press taken as stop is
  * detected immediately, as is a move to an end position where the shutter
- * already is (voltage, but no motor current).
+ * already is (voltage, but no motor current). Unconnected terminals are
+ * learned on the first move (see volt_init()).
  *
  * At rest the battery and the solar panel are measured every
  * CONFIG_SHUTTER_MONITOR_INTERVAL_S seconds and reported via shutter_set_power_cb().
@@ -46,6 +47,7 @@ static const char *TAG = "SHUTTER";
 
 #define NVS_NAMESPACE "shutter"
 #define NVS_KEY_POS   "pos"
+#define NVS_KEY_VOLT  "volt_absent"
 
 #if CONFIG_SHUTTER_OUTPUT_OPEN_DRAIN
 #define LEVEL_ON        0
@@ -272,11 +274,42 @@ static bool sense_wait_stop(void)
 
 #define VOLT_POLL_MS 50
 
-static bool s_volt_ok; /* both motor terminals connected */
+static bool s_volt_wired; /* both motor dividers configured */
+static bool s_volt_ok;    /* ... and the terminals are connected */
 
+/*
+ * At rest an unconnected terminal input reads 0 V, just like a connected one,
+ * so this cannot be checked at start-up. It is learned while running instead:
+ * if the battery voltage shows that the motor runs but its terminals stay
+ * without voltage, they are not connected (stored in NVS). If a later start
+ * sees the voltage, sensing is switched on again.
+ */
 static void volt_init(void)
 {
-    s_volt_ok = sense_available(SENSE_MOTOR_P) && sense_available(SENSE_MOTOR_N);
+    nvs_handle_t handle;
+    uint8_t      absent = 0;
+
+    s_volt_wired = sense_available(SENSE_MOTOR_P) && sense_available(SENSE_MOTOR_N);
+    if (s_volt_wired && nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle) == ESP_OK) {
+        nvs_get_u8(handle, NVS_KEY_VOLT, &absent);
+        nvs_close(handle);
+    }
+    s_volt_ok = s_volt_wired && !absent;
+}
+
+static void volt_set_connected(bool connected)
+{
+    nvs_handle_t handle;
+
+    s_volt_ok = connected;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGW(TAG, "Could not open NVS");
+        return;
+    }
+    if (nvs_set_u8(handle, NVS_KEY_VOLT, connected ? 0 : 1) == ESP_OK) {
+        nvs_commit(handle);
+    }
+    nvs_close(handle);
 }
 
 /** At rest both terminals are without voltage; when powered, one is at battery voltage. */
@@ -341,6 +374,15 @@ static bool motor_start(shutter_motion_t dir)
             s_motor_start_us = esp_timer_get_time();
             output_pulse(gpio_on);
             if (!wait_powered(true, REACT_TIMEOUT_MS)) {
+#if MOTOR_SENSE
+                if (!was_on && s_sense_ok && sense_wait_start(idle_mv)) {
+                    /* The motor runs, but its terminals stay without voltage: they are not connected */
+                    ESP_LOGW(TAG, "Motor running (%d -> %d mV) without terminal voltage: motor voltage not connected",
+                             idle_mv, s_run_mv);
+                    volt_set_connected(false);
+                    return true;
+                }
+#endif
                 /* If the controller was still running (run-on after an end position), the press was a stop */
                 ESP_LOGW(TAG, "%s", was_on ? "Press was taken as stop" : "Controller does not react");
                 continue;
@@ -375,6 +417,10 @@ static bool motor_start(shutter_motion_t dir)
         output_pulse(gpio_on);
         if (sense_wait_start(idle_mv)) {
             ESP_LOGI(TAG, "Motor running (%d -> %d mV)", idle_mv, s_run_mv);
+            if (s_volt_wired && motor_powered()) {
+                ESP_LOGI(TAG, "Motor voltage sensed again");
+                volt_set_connected(true);
+            }
             return true;
         }
     }
@@ -807,6 +853,16 @@ static void handle_tick(void)
     }
 }
 
+/*
+ * An unconnected solar input reads 0 V, like a panel at night. The voltage is
+ * only reported once the panel has seen light, and no longer after two days
+ * without any.
+ */
+#define SOLAR_LIGHT_MV   1000
+#define SOLAR_DARK_MAX_S (48 * 3600)
+
+static int64_t s_solar_light_us = -1; /* last reading with light, -1 = never */
+
 /** Measure and report battery and solar panel at rest (under load the battery value would be too low). */
 static void measure_power(void)
 {
@@ -821,6 +877,13 @@ static void measure_power(void)
     }
     if (sense_available(SENSE_SOLAR) && sense_read_mv(SENSE_SOLAR, 16, &solar_mv) != ESP_OK) {
         solar_mv = -1;
+    }
+    int64_t now = esp_timer_get_time();
+    if (solar_mv >= SOLAR_LIGHT_MV) {
+        s_solar_light_us = now;
+    }
+    if (s_solar_light_us < 0 || now - s_solar_light_us > (int64_t)SOLAR_DARK_MAX_S * 1000000) {
+        solar_mv = -1; /* not connected, or no light for a long time */
     }
 #if CONFIG_PM_ENABLE
     sense_release();
@@ -954,7 +1017,7 @@ esp_err_t shutter_init(shutter_state_cb_t cb)
         ESP_LOGI(TAG, "Motor current detection: battery %d mV, threshold %d mV", sense_idle(), CONFIG_SHUTTER_MOTOR_STEP_MV);
     }
 #endif
-    ESP_LOGI(TAG, "Motor voltage %s", s_volt_ok ? "sensed" : "not connected");
+    ESP_LOGI(TAG, "Motor voltage %s", s_volt_ok ? "sensed" : s_volt_wired ? "not connected (learned)" : "not configured");
     position_load();
     s_target = s_pos;
     atomic_store(&s_percent_cache, pos_to_pct(s_pos));

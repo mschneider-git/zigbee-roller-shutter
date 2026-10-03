@@ -43,7 +43,7 @@ menu "Roller shutter"
             default 10
             help
                 Do not use on the ESP32-H2: strapping pins (GPIO8, 9, 25), USB (GPIO26, 27),
-                32 kHz crystal (GPIO13, 14). Both boards in hardware/: UP = IO10, DOWN = IO11.
+                32 kHz crystal (GPIO13, 14). Carrier board: UP = IO10, DOWN = IO11.
 
         config SHUTTER_GPIO_DOWN
             int "GPIO of the DOWN key (middle keypad pin)"
@@ -147,28 +147,33 @@ menu "Roller shutter"
             range -1 27
             default 4
             help
-                Both boards: IO4. ESP32-H2: ADC on GPIO1..5.
+                Carrier board: IO4. ESP32-H2: ADC on GPIO1..5.
 
         config SHUTTER_MOTOR_P_ADC_GPIO
             int "GPIO of the motor terminal M+ divider"
             range -1 27
             default 5
             help
-                Both boards: IO5.
+                Carrier board: IO5. If the motor terminals are left unconnected
+                (J5), the firmware notices it on the first move: the battery voltage
+                shows the motor running while the terminals stay at 0 V. It then
+                works without motor voltage and remembers that in NVS.
 
         config SHUTTER_MOTOR_N_ADC_GPIO
             int "GPIO of the motor terminal M- divider"
             range -1 27
             default 1
             help
-                Both boards: IO1.
+                Carrier board: IO1. See M+.
 
         config SHUTTER_SOLAR_ADC_GPIO
             int "GPIO of the solar panel divider"
             range -1 27
             default 2
             help
-                Both boards: IO2. The voltage is reported to Home Assistant.
+                Carrier board: IO2. The voltage is reported to Home Assistant once
+                the panel has seen light (above 1 V); an unconnected input, or two
+                days without light, is not reported.
 
         config SHUTTER_SENSE_R_TOP_OHM
             int "Divider top, input -> ADC (Ohm)"

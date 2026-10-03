@@ -81,6 +81,16 @@ start. To handle this reliably the firmware measures:
 
 All dividers are 1 MOhm / 220 kOhm with 100 nF, about 10 µA from the battery.
 
+**Only the battery and the keypad are required.** The motor terminal and solar inputs are optional
+and can stay unconnected:
+
+- Without the **motor terminals** the firmware relies on the battery voltage sag alone. It notices
+  the missing terminals on the first move (motor current, but no terminal voltage) and remembers
+  that. What is lost: a key press taken as stop during the run-on is only detected after the
+  motor current timeout, and a move towards an end position where the shutter already is costs
+  extra presses until the firmware gives up.
+- Without the **solar panel** no solar voltage is reported to Home Assistant.
+
 ## Hardware
 
 The [carrier board](hardware/carrier/README.md) (2 layers, 41.5 × 29.1 mm) plugs onto the keypad
@@ -141,7 +151,7 @@ workflow artifacts can be flashed at address `0x0`, e.g. with the
 | Key press duration | 300 ms | |
 | Detect manual key presses | on | key presses on the drive itself are tracked |
 | Travel time up / down | 16.0 s / 14.2 s | measured on the drive |
-| Dividers battery / M+ / M− / solar | GPIO 4 / 5 / 1 / 2 | −1 = not fitted |
+| Dividers battery / M+ / M− / solar | GPIO 4 / 5 / 1 / 2 | −1 = not fitted. Unconnected motor terminals are detected on the first move, an unconnected solar input is not reported |
 | Motor current via battery voltage | on | checks that the motor starts and detects the end position; time-based only without divider |
 | Motor current step threshold | 50 mV | measured: 70–92 mV sag down, 140–200 mV up, noise ±10 mV |
 | Motor voltage threshold | 6000 mV | both motor terminals are without voltage at rest |
