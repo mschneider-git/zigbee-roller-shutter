@@ -335,6 +335,10 @@ static esp_err_t create_window_covering_device(void)
     ESP_RETURN_ON_FALSE(solar_desc, ESP_FAIL, TAG, "analog input cluster failed");
     ezb_zcl_analog_input_cluster_desc_add_attr(solar_desc, EZB_ZCL_ATTR_ANALOG_INPUT_DESCRIPTION_ID,
                                                (void *)"\x0a""Solar Volt");
+    /* ZHA only creates the sensor if the unit is known as well (BACnet engineering unit 5 = volts) */
+    uint16_t solar_units = 5;
+    ezb_zcl_analog_input_cluster_desc_add_attr(solar_desc, EZB_ZCL_ATTR_ANALOG_INPUT_ENGINEERING_UNITS_ID,
+                                               &solar_units);
     ESP_RETURN_ON_ERROR(ezb_af_endpoint_add_cluster_desc(ep_desc, solar_desc), TAG, "add analog input failed");
 
     ESP_RETURN_ON_ERROR(ota_add_client_cluster(ep_desc, SHUTTER_ENDPOINT), TAG, "OTA cluster failed");
@@ -382,6 +386,15 @@ static void zigbee_task(void *pvParameters)
     ESP_ERROR_CHECK(ezb_app_signal_add_handler(app_signal_handler));
     /* Sleepy end device: radio off between polls */
     ezb_nwk_set_rx_on_when_idle(false);
+    /* Battery powered: the node descriptor otherwise reports constant (mains) power, and ZHA then
+     * creates no battery sensor and uses the shorter availability timeout for mains devices */
+    ezb_af_node_power_desc_t power_desc = {
+        .current_power_mode         = EZB_AF_NODE_POWER_MODE_COME_ON_PERIODICALLY,
+        .available_power_sources    = EZB_AF_NODE_POWER_SOURCE_RECHARGEABLE_BATTERY,
+        .current_power_source       = EZB_AF_NODE_POWER_SOURCE_RECHARGEABLE_BATTERY,
+        .current_power_source_level = EZB_AF_NODE_POWER_SOURCE_LEVEL_100_PERCENT,
+    };
+    ESP_ERROR_CHECK(ezb_af_set_node_power_desc(&power_desc));
     ESP_ERROR_CHECK(create_window_covering_device());
     atomic_store(&s_zb_ready, true);
     power_publish(); /* a reading that finished between creating the clusters and now */
