@@ -1,0 +1,20 @@
+# Proof of concept without the carrier board: bare H2-Zero, Dupont wires.
+# Only the battery divider (1 MOhm / 220 kOhm on IO4), no motor terminals,
+# no solar input, no 32 kHz crystal.
+#
+#   idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.poc" build
+#
+# Delete the generated sdkconfig first when switching between the variants.
+
+# Not fitted
+CONFIG_SHUTTER_MOTOR_P_ADC_GPIO=-1
+CONFIG_SHUTTER_MOTOR_N_ADC_GPIO=-1
+CONFIG_SHUTTER_SOLAR_ADC_GPIO=-1
+
+# No 32 kHz crystal: internal RC oscillator instead of a failing crystal start
+CONFIG_RTC_CLK_SRC_EXT_CRYS=n
+CONFIG_RTC_CLK_SRC_INT_RC=y
+
+# Bench test: readable logs on the USB console
+CONFIG_LOG_DEFAULT_LEVEL_WARN=n
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
