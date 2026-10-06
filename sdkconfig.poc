@@ -18,3 +18,7 @@ CONFIG_RTC_CLK_SRC_INT_RC=y
 # Bench test: readable logs on the USB console
 CONFIG_LOG_DEFAULT_LEVEL_WARN=n
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# USB Serial/JTAG does not work in light sleep on the ESP32-H2: no light sleep
+# while USB is connected, so the console stays available (no effect on battery)
+CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y
