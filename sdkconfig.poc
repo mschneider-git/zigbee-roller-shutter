@@ -19,6 +19,11 @@ CONFIG_RTC_CLK_SRC_INT_RC=y
 CONFIG_LOG_DEFAULT_LEVEL_WARN=n
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
-# USB Serial/JTAG does not work in light sleep on the ESP32-H2: no light sleep
-# while USB is connected, so the console stays available (no effect on battery)
-CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y
+# The USB console does not survive power management on the ESP32-H2 (IDF v5.5.4):
+# CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION holds its no-light-sleep lock as specified, but
+# USB still drops after 1-3 minutes once esp_pm_configure() runs with light_sleep_enable,
+# even without a single light sleep (cause unknown, bench test 2026-10-07). So no power
+# management on the bench; measure the sleep current with the regular build and without USB.
+CONFIG_PM_ENABLE=n
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=n
+CONFIG_IEEE802154_SLEEP_ENABLE=n
