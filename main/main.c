@@ -80,9 +80,37 @@ static void schedule_commissioning(ezb_bdb_comm_mode_mask_t mode, uint32_t delay
 /* Shutter -> Zigbee                                                         */
 /* ------------------------------------------------------------------------- */
 
+#define UNCHANGED_REPORT_DELAY_MS 1000
+
+static esp_timer_handle_t s_report_timer;
+
+/** Sends the position to the coordinator now, via the binding ZHA set up for reporting. */
+static void report_timer_cb(void *arg)
+{
+    ezb_zcl_report_attr_cmd_t cmd = {
+        .cmd_ctrl = {
+            .dst_addr   = {.addr_mode = EZB_ADDR_MODE_NONE},
+            .src_ep     = SHUTTER_ENDPOINT,
+            .cluster_id = EZB_ZCL_CLUSTER_ID_WINDOW_COVERING,
+            .manuf_code = EZB_ZCL_STD_MANUF_CODE,
+            .fc         = {.direction = EZB_ZCL_CMD_DIRECTION_TO_CLI, .dis_default_rsp = 1},
+        },
+        .payload.attr_id = EZB_ZCL_ATTR_WINDOW_COVERING_CURRENT_POSITION_LIFT_PERCENTAGE_ID,
+    };
+
+    ESP_LOGI(TAG, "Position unchanged: reporting it");
+    esp_zigbee_lock_acquire(portMAX_DELAY);
+    ezb_err_t err = ezb_zcl_report_attr_cmd_req(&cmd);
+    esp_zigbee_lock_release();
+    if (err != EZB_ERR_NONE) {
+        ESP_LOGW(TAG, "Reporting the position failed (%d)", err);
+    }
+}
+
 static void shutter_state_changed(uint8_t lift_percent, shutter_motion_t motion)
 {
     static const char *motion_str[] = {"stopped", "opening", "closing"};
+    static int         published    = -1;
 
     ESP_LOGI(TAG, "Position %u %% (%s)", lift_percent, motion_str[motion]);
     if (!atomic_load(&s_zb_ready)) {
@@ -96,7 +124,18 @@ static void shutter_state_changed(uint8_t lift_percent, shutter_motion_t motion)
     esp_zigbee_lock_release();
     if (status != EZB_ZCL_STATUS_SUCCESS) {
         ESP_LOGW(TAG, "Setting the position failed (0x%02x)", status);
+        return;
     }
+
+    /* Reporting only sends changes. After a command that ends without a move (motor already at the
+     * end switch, already at the target), ZHA would show "opening"/"closing" until its 5 min
+     * timeout: send the unchanged position, which tells ZHA that the shutter stands still. ZHA only
+     * sets "opening"/"closing" once the command's response has arrived, so wait for that first. */
+    if (motion == SHUTTER_MOTION_STOPPED && lift_percent == published) {
+        esp_timer_stop(s_report_timer);
+        esp_timer_start_once(s_report_timer, UNCHANGED_REPORT_DELAY_MS * 1000);
+    }
+    published = lift_percent;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -435,6 +474,12 @@ void app_main(void)
 #if CONFIG_PM_ENABLE
     ESP_ERROR_CHECK(power_save_init());
 #endif
+
+    const esp_timer_create_args_t report_timer_args = {
+        .callback = report_timer_cb,
+        .name     = "zb_report",
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&report_timer_args, &s_report_timer));
 
     shutter_set_power_cb(power_measured);
     ESP_ERROR_CHECK(shutter_init(shutter_state_changed));
