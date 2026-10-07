@@ -361,6 +361,13 @@ static esp_err_t create_window_covering_device(void)
     ezb_zcl_power_config_cluster_desc_add_attr(power_desc, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID,
                                                &battery_percent);
     ezb_zcl_power_config_cluster_desc_add_attr(power_desc, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_SIZE_ID, &battery_size);
+    /* ZCL defines BatteryVoltage as not reportable, so ZHA's reporting configuration for it fails
+     * (UNREPORTABLE_ATTRIBUTE) and the value only changes when ZHA polls: allow reporting */
+    ezb_zcl_attr_desc_t voltage_attr = ezb_zcl_cluster_get_attr_desc(
+        power_desc, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID, EZB_ZCL_STD_MANUF_CODE);
+    ESP_RETURN_ON_FALSE(voltage_attr != EZB_INVALID_ZCL_ATTR_DESC, ESP_FAIL, TAG, "battery voltage attribute missing");
+    ezb_zcl_attr_desc_set_access(voltage_attr,
+                                 ezb_zcl_attr_desc_get_access(voltage_attr) | EZB_ZCL_ATTR_ACCESS_REPORTING);
     ESP_RETURN_ON_ERROR(ezb_af_endpoint_add_cluster_desc(ep_desc, power_desc), TAG, "add power config failed");
 
     /* Solar panel: voltage in volts */
